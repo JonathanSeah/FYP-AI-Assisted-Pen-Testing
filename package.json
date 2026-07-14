@@ -1,0 +1,42 @@
+{
+  "name": "cve-ai-assistant",
+  "version": "1.0.0",
+  "description": "Desktop AI chatbot (OpenRouter) that can run arbitrary shell commands on a Linux machine over a user-configured SSH connection, always with on-screen confirmation. School project.",
+  "main": "main.js",
+  "author": "Student Project",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "ssh2": "^1.15.0"
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.school.cveaiassistant",
+    "productName": "CVE AI Assistant",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    }
+  }
+}

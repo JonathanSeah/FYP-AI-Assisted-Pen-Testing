@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>CVE AI Assistant</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- ============ LEFT SIDEBAR : CHATS ============ -->
+    <aside class="sidebar chats-sidebar">
+      <div class="sidebar-header">
+        <h1>CVE AI Assistant</h1>
+        <button id="newChatBtn" class="btn primary full">+ New Chat</button>
+      </div>
+      <div id="chatList" class="chat-list"></div>
+      <button id="revealFolderBtn" class="btn ghost full small">Open chats folder</button>
+    </aside>
+
+    <!-- ============ CENTER COLUMN : CHAT + SSH TERMINAL ============ -->
+    <div class="center-col">
+      <main class="chat-main">
+        <div class="chat-topbar">
+          <span id="currentChatTitle">No chat selected</span>
+          <div class="topbar-actions">
+            <button id="settingsBtn" class="btn ghost">⚙ Settings</button>
+            <button id="sshSettingsBtn" class="btn ghost">🔐 SSH</button>
+            <button id="browserBtn" class="btn ghost">🌐 Browser</button>
+            <button id="consoleToggleBtn" class="btn ghost">🖥 System Console</button>
+          </div>
+        </div>
+
+        <div id="messages" class="messages"></div>
+
+        <div class="composer">
+          <textarea id="userInput" placeholder="Ask a question, or have the AI run a command over SSH..." rows="2"></textarea>
+          <button id="sendBtn" class="btn primary">Send</button>
+        </div>
+      </main>
+
+      <!-- ============ SSH TERMINAL (view-only) ============ -->
+      <section class="ssh-terminal-panel" id="sshTerminalPanel">
+        <div class="ssh-terminal-resize-handle" id="sshTerminalResizeHandle" title="Drag to resize"></div>
+        <div class="ssh-terminal-header">
+          <span class="ssh-terminal-title">
+            SSH Terminal
+            <span id="sshStatusDot" class="ssh-status-dot disconnected"></span>
+            <span id="sshStatusText">Disconnected</span>
+          </span>
+          <div>
+            <button id="sshSettingsBtn2" class="btn ghost small">SSH Settings</button>
+            <button id="sshTerminalToggleBtn" class="btn ghost small">Collapse</button>
+          </div>
+        </div>
+        <pre id="sshTerminalOutput" class="ssh-terminal-output">Not connected. Open "SSH Settings" to connect as root@&lt;ip_address&gt;.
+Only commands the AI runs (after your confirmation) are shown here, each wrapped in a ──── rule line — this panel is view-only.
+Drag the thin bar at the very top of this panel up or down to resize it.</pre>
+      </section>
+    </div>
+
+    <!-- ============ RIGHT PANEL : SYSTEM CONSOLE ============ -->
+    <aside class="sidebar console-sidebar" id="consolePanel">
+      <div class="sidebar-header">
+        <h2>System Console</h2>
+        <button id="clearConsoleBtn" class="btn ghost small">Clear</button>
+      </div>
+      <p class="hint">Web-page fetches and errors are logged here. SSH commands appear only in the SSH Terminal panel below the chat.</p>
+      <div id="consoleLog" class="console-log"></div>
+    </aside>
+
+  </div>
+
+  <!-- ============ SETTINGS MODAL ============ -->
+  <div id="settingsModal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Settings</h2>
+
+      <label>OpenRouter API Key</label>
+      <input id="apiKeyInput" type="password" placeholder="sk-or-v1-..." />
+
+      <label>Model (OpenRouter model id)</label>
+      <input id="modelInput" type="text" placeholder="openai/gpt-4o-mini" />
+
+      <label>System Prompt</label>
+      <textarea id="systemPromptInput" rows="8"></textarea>
+
+      <p class="hint">SSH connection details and sudo password live under 🔐 SSH, not here.</p>
+
+      <div class="modal-actions">
+        <button id="closeSettingsBtn" class="btn ghost">Cancel</button>
+        <button id="saveSettingsBtn" class="btn primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SSH SETTINGS MODAL ============ -->
+  <div id="sshModal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>🔐 SSH Settings</h2>
+      <p class="hint">Connect the AI to a Linux machine over SSH. There is no command whitelist — the AI can
+        request ANY command, but it must always ask for your confirmation first in an on-screen dialog.</p>
+
+      <label>Server (root login only)</label>
+      <div class="inline-input-row root-at-row">
+        <span class="root-at-prefix">root@</span>
+        <input id="sshHostInput" type="text" placeholder="192.168.1.10 or myserver.example.com" />
+      </div>
+      <p class="hint">Every connection logs in as <code>root</code> — this is the only supported login mode, there is no username field.</p>
+
+      <label>Port</label>
+      <input id="sshPortInput" type="text" placeholder="22" />
+
+      <label>Authentication method</label>
+      <select id="sshAuthMethodInput">
+        <option value="password">Password</option>
+        <option value="key">Private key file</option>
+      </select>
+
+      <div id="sshPasswordGroup">
+        <label>Password</label>
+        <input id="sshPasswordInput" type="password" placeholder="SSH login password" />
+      </div>
+
+      <div id="sshKeyGroup" class="hidden">
+        <label>Private key file</label>
+        <div class="inline-input-row">
+          <input id="sshKeyPathInput" type="text" placeholder="/home/you/.ssh/id_ed25519" />
+          <button id="sshBrowseKeyBtn" class="btn ghost small">Browse…</button>
+        </div>
+        <label>Key passphrase (if any)</label>
+        <input id="sshPassphraseInput" type="password" placeholder="Leave blank if none" />
+      </div>
+
+      <label>Sudo password (optional)</label>
+      <input id="sshSudoPasswordInput" type="password" placeholder="Auto-supplied when a command prompts for [sudo] password" />
+      <p class="hint">Rarely needed, since the connection already logs in as root — but if some command still
+        triggers a "[sudo] password for ..." prompt, this is typed in automatically so it can complete after
+        you confirm it.</p>
+
+      <div class="ssh-status-line">Status: <span id="sshModalStatusText">Disconnected</span></div>
+
+      <div class="modal-actions">
+        <button id="sshDisconnectBtn" class="btn danger">Disconnect</button>
+        <button id="closeSshBtn" class="btn ghost">Close</button>
+        <button id="sshSaveBtn" class="btn ghost">Save</button>
+        <button id="sshConnectBtn" class="btn primary">Save &amp; Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ BROWSER MODAL ============ -->
+  <div id="browserModal" class="modal-overlay hidden">
+    <div class="modal browser-modal">
+      <div class="browser-toolbar">
+        <input id="browserUrlInput" type="text" placeholder="https://example.com" />
+        <button id="browserGoBtn" class="btn primary small">Go</button>
+        <button id="browserReloadBtn" class="btn ghost small">⟳</button>
+        <button id="browserViewSourceBtn" class="btn ghost small">View Source</button>
+        <button id="browserDevtoolsBtn" class="btn ghost small">Inspector / DevTools</button>
+        <button id="closeBrowserBtn" class="btn ghost small">✕</button>
+      </div>
+      <div class="browser-body">
+        <webview id="browserWebview" src="about:blank" class="browser-webview"></webview>
+        <pre id="browserSourceView" class="browser-source-view hidden"><code id="browserSourceCode"></code></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ NEW CHAT MODAL ============ -->
+  <div id="newChatModal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>New Chat</h2>
+      <label>Chat name</label>
+      <input id="newChatNameInput" type="text" placeholder="New Chat" />
+      <div class="modal-actions">
+        <button id="cancelNewChatBtn" class="btn ghost">Cancel</button>
+        <button id="confirmNewChatBtn" class="btn primary">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CONFIRMATION MODAL (AI wants to run an SSH command) ============ -->
+  <div id="confirmModal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>⚠ SSH Command Confirmation</h2>
+      <p>The AI wants to run a command on the connected Linux machine over SSH:</p>
+      <div class="confirm-details">
+        <div><strong>Host:</strong> <span id="confirmHost"></span></div>
+        <div><strong>Command:</strong> <span id="confirmCommand"></span></div>
+      </div>
+      <p class="hint">There is no whitelist — review this command carefully before allowing it. It will run
+        exactly as shown, and will appear in the SSH Terminal panel.</p>
+      <div class="modal-actions">
+        <button id="denyBtn" class="btn ghost">Deny</button>
+        <button id="approveBtn" class="btn primary">Allow</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
