@@ -508,7 +508,7 @@ async function executeToolCall(toolCall) {
         title: `AI opened page: ${result.url}`,
         detail: `Status: ${result.status}\nTitle: ${result.title || '(none)'}\nContent-Type: ${result.contentType}`
       });
-      return `URL: ${result.url}\nStatus: ${result.status}\nTitle: ${result.title || '(none)'}\nContent-Type: ${result.contentType}\n\nHTML source (truncated):\n${result.html.slice(0, 8000)}`;
+      return `URL: ${result.url}\nStatus: ${result.status}\nTitle: ${result.title || '(none)'}\nContent-Type: ${result.contentType}\n\nHTML source (truncated):\n${result.html.slice(0, 40000)}`;
     } catch (e) {
       logConsole({ type: 'error', title: `Web fetch failed: "${args.url}"`, detail: e.message });
       return `Failed to fetch page: ${e.message}`;
@@ -556,9 +556,13 @@ ipcMain.handle('chat:send', async (evt, { history, userMessage }) => {
   const newMessages = [{ role: 'user', content: userMessage }];
   let iterations = 0;
 
-  while (iterations < 6 && finalText === null) {
+  while (iterations < 12 && finalText === null) {
     iterations++;
-    const data = await callOpenRouter(cfg.apiKey, cfg.model, messages);
+    const forceFinal = iterations === 6;
+    const data = await callOpenRouter(
+    cfg.apiKey, cfg.model, messages,
+    forceFinal ? { tool_choice: 'none' } : {}   // last call: no more tools, must answer
+    );
     const choice = data.choices && data.choices[0];
     if (!choice) throw new Error('No response from model.');
     const msg = choice.message;
