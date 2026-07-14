@@ -8,10 +8,6 @@ login mode, there's no username field) and run **any shell command** on it —
 with no whitelist — always with on-screen logging and a **mandatory**
 confirmation prompt before the AI runs anything.
 
-> Note: the original "CVE lookup" tool has been removed entirely in favor of
-> the SSH feature described below. The app/folder name still says "CVE AI
-> Assistant"; rename it if you'd like, that's unrelated to functionality.
-
 ## Features
 
 - **OpenRouter integration** — bring your own API key, pick any OpenRouter model id.
@@ -61,7 +57,6 @@ confirmation prompt before the AI runs anything.
 ## Setup
 
 ```bash
-cd cve-ai-assistant
 npm install
 npm start
 ```
