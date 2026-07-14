@@ -412,9 +412,6 @@ async function fetchPage(rawUrl) {
   if (!/^https?:$/.test(u.protocol)) {
     throw new Error('Only http:// and https:// URLs are allowed.');
   }
-  if (isPrivateHost(u.hostname)) {
-    throw new Error('Requests to localhost / private network addresses are blocked.');
-  }
   const res = await fetch(u.toString(), {
     headers: { 'User-Agent': 'cve-ai-assistant-school-project' },
     redirect: 'follow'
