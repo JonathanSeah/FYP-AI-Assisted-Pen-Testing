@@ -353,8 +353,20 @@ function runSshCommand(command) {
     const marker = `__SSH_DONE_${crypto.randomBytes(4).toString('hex')}__`;
     const timeoutHandle = setTimeout(() => {
       activeSshCapture = null;
-      broadcastSshData(`■ TIMED OUT after 45s\n${RULE}\n`);
-      reject(new Error('Command timed out after 45s (it may be waiting for input, or long-running).'));
+      // The command is still running as the shell's foreground process at
+      // this point — we've only given up on it client-side. Since this is a
+      // single persistent interactive shell/PTY (not one exec per command),
+      // if we don't actually stop it, it keeps holding the prompt: every
+      // subsequent command (including the marker echo used to detect
+      // completion) just queues up unread in the PTY input buffer and
+      // *also* times out, cascading indefinitely even for trivial commands
+      // like `echo`. Send Ctrl-C to interrupt the hung foreground process
+      // so the shell drops back to a prompt and can accept new commands.
+      if (sshStream) {
+        try { sshStream.write('\x03'); } catch (e) { /* ignore */ }
+      }
+      broadcastSshData(`■ TIMED OUT after 45s (sent Ctrl-C to interrupt)\n${RULE}\n`);
+      reject(new Error('Command timed out after 45s (it may be waiting for input, or long-running) — sent Ctrl-C to the remote shell so it stays usable for the next command.'));
     }, 45000);
     activeSshCapture = {
       marker,
