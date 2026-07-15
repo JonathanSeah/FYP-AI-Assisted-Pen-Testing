@@ -138,6 +138,12 @@ Drag the thin bar at the very top of this panel up or down to resize it.</pre>
         triggers a "[sudo] password for ..." prompt, this is typed in automatically so it can complete after
         you confirm it.</p>
 
+      <label>Command timeout (seconds)</label>
+      <input id="sshCommandTimeoutInput" type="text" placeholder="240" />
+      <p class="hint">How long to wait for a single command before giving up on it (Ctrl-C is sent to the remote
+        shell so it stays usable afterward). Quick commands finish in seconds, but things like
+        <code>nmap -sV -sC</code> commonly take several minutes — raise this if you expect to run slow scans.</p>
+
       <div class="ssh-status-line">Status: <span id="sshModalStatusText">Disconnected</span></div>
 
       <div class="modal-actions">

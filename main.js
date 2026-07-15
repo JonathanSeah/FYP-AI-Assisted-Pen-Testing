@@ -44,7 +44,13 @@ function defaultConfig() {
     sshPassword: '',
     sshPrivateKeyPath: '',
     sshPassphrase: '',
-    sudoPassword: ''
+    sudoPassword: '',
+    // How long to wait for a single SSH command before giving up on it.
+    // 45s is fine for quick commands but far too short for things like
+    // `nmap -sV -sC` (version detection + default scripts routinely takes
+    // 1-5+ minutes per host), so this is user-configurable with a much
+    // more realistic default.
+    sshCommandTimeoutSec: 240
   };
 }
 
@@ -186,14 +192,26 @@ let activeSshCapture = null; // { marker, buffer, resolve, reject, timeoutHandle
 
 // Strip ANSI escape / control sequences so the "view only" terminal panel
 // shows clean, readable text instead of raw escape codes.
-const ANSI_RE = new RegExp(
-  '[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*|' +
-  '[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)|' +
-  '(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))',
-  'g'
-);
+//
+// NOTE: the previous version of this regex used the same nested/overlapping
+// quantifier shape as the old vulnerable `ansi-regex` package (CVE-2021-3807)
+// — it could hit catastrophic backtracking on certain escape sequences.
+// Fancy shell prompts (e.g. Kali's default powerline-style zsh theme) chain
+// a lot of SGR/CSI codes per line, and long-running commands like
+// `nmap -sV -sC` redraw progress lines through a PTY constantly, so this
+// regex was running, and potentially pathologically backtracking, on every
+// single chunk of output — synchronously, on Node's one event-loop thread.
+// That doesn't just make the app feel slow: it can stall reading off the
+// SSH channel entirely, which creates backpressure that makes the *remote*
+// shell's writes block too, so the command genuinely takes longer end-to-end
+// than the same command typed directly at the console (where none of this
+// JS parsing exists in the loop).
+// These two patterns split CSI and OSC sequences with bounded, unambiguous
+// character classes so there's no ambiguous backtracking possible.
+const CSI_RE = /[\u001B\u009B]\[[0-9;]*[a-zA-Z]/g;
+const OSC_RE = /[\u001B\u009B]\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g;
 function stripAnsi(str) {
-  return String(str).replace(ANSI_RE, '');
+  return String(str).replace(OSC_RE, '').replace(CSI_RE, '');
 }
 
 // A full-width divider line used to visually bracket the start/end of every
@@ -236,10 +254,16 @@ function attachStreamHandlers(stream) {
       // While an AI command is running, hold its raw output back — we
       // render one clean, ruled-off block for it once it completes,
       // instead of interleaving marker/echo noise into the live view.
-      activeSshCapture.buffer += clean;
-      const m = activeSshCapture.buffer.match(activeSshCapture.markerRe);
+      const cap = activeSshCapture;
+      const prevLen = cap.buffer.length;
+      cap.buffer += clean;
+      // Only search the region that could possibly contain a *new* match:
+      // everything already scanned before is guaranteed marker-free, so
+      // there's no need to re-run a regex over the whole (potentially large,
+      // for verbose scans) buffer on every single incoming chunk.
+      const searchFrom = Math.max(0, prevLen - cap.marker.length - 8);
+      const m = cap.buffer.slice(searchFrom).match(cap.markerRe);
       if (m) {
-        const cap = activeSshCapture;
         activeSshCapture = null;
         clearTimeout(cap.timeoutHandle);
         const idx = cap.buffer.indexOf(cap.marker);
@@ -351,6 +375,7 @@ function runSshCommand(command) {
       return;
     }
     const marker = `__SSH_DONE_${crypto.randomBytes(4).toString('hex')}__`;
+    const timeoutSec = (loadConfig().sshCommandTimeoutSec) || 240;
     const timeoutHandle = setTimeout(() => {
       activeSshCapture = null;
       // The command is still running as the shell's foreground process at
@@ -365,9 +390,9 @@ function runSshCommand(command) {
       if (sshStream) {
         try { sshStream.write('\x03'); } catch (e) { /* ignore */ }
       }
-      broadcastSshData(`■ TIMED OUT after 45s (sent Ctrl-C to interrupt)\n${RULE}\n`);
-      reject(new Error('Command timed out after 45s (it may be waiting for input, or long-running) — sent Ctrl-C to the remote shell so it stays usable for the next command.'));
-    }, 45000);
+      broadcastSshData(`■ TIMED OUT after ${timeoutSec}s (sent Ctrl-C to interrupt)\n${RULE}\n`);
+      reject(new Error(`Command timed out after ${timeoutSec}s (it may be waiting for input, or long-running) — sent Ctrl-C to the remote shell so it stays usable for the next command. If this is a legitimately slow command (e.g. a thorough nmap scan), increase the timeout in SSH Settings or narrow the scan (fewer ports / -T4 / --top-ports).`));
+    }, timeoutSec * 1000);
     activeSshCapture = {
       marker,
       markerRe: new RegExp(marker + ':(\\d+)'),

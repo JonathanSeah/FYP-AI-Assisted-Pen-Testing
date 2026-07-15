@@ -119,9 +119,15 @@ typically `%APPDATA%\cve-ai-assistant\`.
   disables local echo for password prompts).
 - SSH commands run through a single persistent interactive shell/PTY channel
   per connection; the app matches command completion with a random one-time
-  marker string rather than parsing shell prompts, and applies a 45s timeout,
-  so long-running or interactive commands (that block waiting for input) will
-  time out rather than hang forever.
+  marker string rather than parsing shell prompts, and applies a per-command
+  timeout (configurable in SSH Settings, default 240s) so long-running or
+  interactive commands (that block waiting for input) don't hang forever.
+  On timeout, the app sends Ctrl-C to the remote shell to interrupt the
+  still-running foreground command — otherwise, since there's only one
+  shared shell, it would keep holding the prompt and every later command
+  (even a trivial `echo`) would queue up unread and time out too. Genuinely
+  slow commands (e.g. `nmap -sV -sC`, which commonly takes minutes) may
+  still need the timeout raised rather than relying on Ctrl-C recovery.
 - **Prompt-injection caveat**: the `open_webpage` tool fetches arbitrary
   external HTML, and the AI also has SSH command execution. If the AI is
   asked to fetch a page and that page's content tries to instruct the AI to

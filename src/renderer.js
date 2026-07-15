@@ -249,7 +249,8 @@ function collectSshFormFields() {
     password: el('sshPasswordInput').value,
     privateKeyPath: el('sshKeyPathInput').value.trim(),
     passphrase: el('sshPassphraseInput').value,
-    sudoPassword: el('sshSudoPasswordInput').value
+    sudoPassword: el('sshSudoPasswordInput').value,
+    commandTimeoutSec: parseInt(el('sshCommandTimeoutInput').value.trim(), 10) || 240
   };
 }
 
@@ -262,7 +263,8 @@ async function saveSshConfig() {
     sshPassword: f.password,
     sshPrivateKeyPath: f.privateKeyPath,
     sshPassphrase: f.passphrase,
-    sudoPassword: f.sudoPassword
+    sudoPassword: f.sudoPassword,
+    sshCommandTimeoutSec: f.commandTimeoutSec
   });
   return f;
 }
@@ -295,6 +297,7 @@ async function openSshModal() {
   el('sshKeyPathInput').value = cfg.sshPrivateKeyPath || '';
   el('sshPassphraseInput').value = cfg.sshPassphrase || '';
   el('sshSudoPasswordInput').value = cfg.sudoPassword || '';
+  el('sshCommandTimeoutInput').value = cfg.sshCommandTimeoutSec || 240;
   updateSshAuthGroups();
   const status = await window.api.sshStatus();
   setSshModalStatus(status);
