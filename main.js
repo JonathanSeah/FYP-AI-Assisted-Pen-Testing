@@ -207,21 +207,22 @@ let activeSshCapture = null; // { marker, buffer, resolve, reject, timeoutHandle
 // than the same command typed directly at the console (where none of this
 // JS parsing exists in the loop).
 // These two patterns split CSI and OSC sequences with bounded, unambiguous
-// character classes so there's no ambiguous backtracking possible.
-const CSI_RE = /[\u001B\u009B]\[[0-9;]*[a-zA-Z]/g;
+// character classes so there's no ambiguous backtracking possible. CSI_RE
+// follows the real ANSI/ECMA-48 structure (parameter bytes 0x30-0x3F,
+// intermediate bytes 0x20-0x2F, final byte 0x40-0x7E) rather than assuming
+// parameters are only digits/semicolons — the previous version missed DEC
+// private-mode sequences like `ESC[?1h` / `ESC[?2004h` (cursor-key mode,
+// bracketed-paste mode, sent by the shell whenever it redraws the prompt),
+// which is exactly what was showing up as corrupted "?[?1h?=?[?2004h"-style
+// junk at an idle prompt.
+const CSI_RE = /[\u001B\u009B]\[[0-?]*[ -\/]*[@-~]/g;
 const OSC_RE = /[\u001B\u009B]\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g;
+// Standalone (non-bracketed) escapes like ESC= / ESC> (DECKPAM/DECKPNM,
+// application vs. numeric keypad mode) — also part of that same junk.
+const ESC_SINGLE_RE = /\u001B[=>]/g;
 function stripAnsi(str) {
-  return String(str).replace(OSC_RE, '').replace(CSI_RE, '');
+  return String(str).replace(OSC_RE, '').replace(CSI_RE, '').replace(ESC_SINGLE_RE, '');
 }
-
-// A full-width divider line used to visually bracket the start/end of every
-// AI-run command in the terminal panel, e.g.:
-//   ────────────────────────────────────────────────
-//   ▶ $ df -h
-//   Filesystem ... (output) ...
-//   ■ exit code 0
-//   ────────────────────────────────────────────────
-const RULE = '─'.repeat(56);
 
 function broadcastSshStatus() {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -273,7 +274,7 @@ function attachStreamHandlers(stream) {
         if (firstNl !== -1) output = output.slice(firstNl + 1);
         output = output.replace(/\r/g, '').trim();
         const exitCode = parseInt(m[1], 10);
-        broadcastSshData(`${output ? output + '\n' : ''}■ exit code ${exitCode}\n${RULE}\n`);
+        broadcastSshData(`${output ? output + '\n' : ''}■ exit code ${exitCode}\n`);
         cap.resolve({ exitCode, output });
       }
     } else {
@@ -390,7 +391,7 @@ function runSshCommand(command) {
       if (sshStream) {
         try { sshStream.write('\x03'); } catch (e) { /* ignore */ }
       }
-      broadcastSshData(`■ TIMED OUT after ${timeoutSec}s (sent Ctrl-C to interrupt)\n${RULE}\n`);
+      broadcastSshData(`■ TIMED OUT after ${timeoutSec}s (sent Ctrl-C to interrupt)\n`);
       reject(new Error(`Command timed out after ${timeoutSec}s (it may be waiting for input, or long-running) — sent Ctrl-C to the remote shell so it stays usable for the next command. If this is a legitimately slow command (e.g. a thorough nmap scan), increase the timeout in SSH Settings or narrow the scan (fewer ports / -T4 / --top-ports).`));
     }, timeoutSec * 1000);
     activeSshCapture = {
@@ -401,7 +402,7 @@ function runSshCommand(command) {
       reject,
       timeoutHandle
     };
-    broadcastSshData(`${RULE}\n▶ $ ${command}\n`);
+    broadcastSshData(`▶ $ ${command}\n`);
     sshStream.write(`${command}\n`);
     // A separate, tiny write to emit the completion marker + exit code.
     sshStream.write(`echo "${marker}:$?"\n`);

@@ -358,18 +358,70 @@ window.api.onSshStatus((status) => {
 // ---------------------------------------------------------------------------
 const SSH_TERMINAL_MAX_CHARS = 200000;
 let sshTerminalPrimed = false;
+let sshRawBuffer = '';
+// A small tail of raw text we hold back from rendering, in case a
+// "root@host" / "root💀host" match is split across two incoming chunks
+// (this shell's output is known to arrive in oddly fine-grained chunks —
+// see the escape-sequence handling in main.js). 40 chars comfortably
+// covers "root@" / "root💀" plus a realistic hostname length. It's flushed
+// immediately once we have more than 40 chars of unrendered text, or after
+// a brief idle period (so an idle prompt doesn't just sit invisible
+// forever waiting for a match that will never arrive).
+const SSH_HOLDBACK = 40;
+const SSH_FLUSH_IDLE_MS = 120;
+let sshPendingRaw = '';
+let sshFlushTimer = null;
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+// The session always logs in as root (see SSH Settings) — highlight the
+// "root@<host>" (or Kali's root-prompt theme, which uses a skull emoji
+// instead of "@", e.g. "root💀kali") portion of the shell prompt in red so
+// it stands out from the rest of the terminal output.
+function highlightSshPrompt(escapedText) {
+  return escapedText.replace(/root(?:@|💀)[\w.-]+/g, (m) => `<span class="ssh-user-host">${m}</span>`);
+}
+
+function sshFlushPending() {
+  if (!sshPendingRaw) return;
+  const out = el('sshTerminalOutput');
+  out.insertAdjacentHTML('beforeend', highlightSshPrompt(escapeHtml(sshPendingRaw)));
+  sshPendingRaw = '';
+  out.scrollTop = out.scrollHeight;
+}
 
 window.api.onSshData((text) => {
   const out = el('sshTerminalOutput');
   if (!sshTerminalPrimed) {
-    out.textContent = '';
+    out.innerHTML = '';
+    sshRawBuffer = '';
+    sshPendingRaw = '';
     sshTerminalPrimed = true;
   }
-  out.textContent += text;
-  if (out.textContent.length > SSH_TERMINAL_MAX_CHARS) {
-    out.textContent = out.textContent.slice(-SSH_TERMINAL_MAX_CHARS + 20000);
+  clearTimeout(sshFlushTimer);
+  sshRawBuffer += text;
+  const combined = sshPendingRaw + text;
+  let toRender;
+  if (combined.length > SSH_HOLDBACK) {
+    toRender = combined.slice(0, combined.length - SSH_HOLDBACK);
+    sshPendingRaw = combined.slice(combined.length - SSH_HOLDBACK);
+  } else {
+    toRender = '';
+    sshPendingRaw = combined;
+  }
+  if (toRender) {
+    out.insertAdjacentHTML('beforeend', highlightSshPrompt(escapeHtml(toRender)));
+  }
+  if (sshRawBuffer.length > SSH_TERMINAL_MAX_CHARS) {
+    sshRawBuffer = sshRawBuffer.slice(-SSH_TERMINAL_MAX_CHARS + 20000);
+    // Rebuilding from the trimmed raw buffer only happens occasionally
+    // (once every ~200k chars), not per chunk, so this stays cheap overall.
+    out.innerHTML = highlightSshPrompt(escapeHtml(sshRawBuffer + sshPendingRaw));
+    sshPendingRaw = '';
   }
   out.scrollTop = out.scrollHeight;
+  sshFlushTimer = setTimeout(sshFlushPending, SSH_FLUSH_IDLE_MS);
 });
 
 // ---------------------------------------------------------------------------

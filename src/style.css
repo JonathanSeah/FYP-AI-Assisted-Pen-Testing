@@ -310,6 +310,10 @@ html, body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.ssh-terminal-output .ssh-user-host {
+  color: var(--danger);
+  font-weight: 600;
+}
 .ssh-status-line {
   margin-top: 14px;
   font-size: 12.5px;

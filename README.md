@@ -92,6 +92,53 @@ Electron's per-user app-data folder (`app.getPath('userData')`):
 On Linux this is typically `~/.config/cve-ai-assistant/`; on Windows it's
 typically `%APPDATA%\cve-ai-assistant\`.
 
+## SSH Console limitations
+
+This app's SSH console is intentionally simple, and that simplicity comes
+with real restrictions worth knowing about before you rely on it:
+
+- **One shared interactive shell per connection, not one process per
+  command.** When you connect, the app opens a single persistent
+  shell/PTY channel and every AI-issued command is typed into that same
+  shell, one after another — it does **not** open a fresh SSH exec channel
+  per command. This keeps shell state (cwd, env vars, a sudo timestamp)
+  between commands, but it also means commands are strictly serial: nothing
+  else can run on that shell until the current command finishes, and a
+  stuck command blocks everything queued behind it.
+- **Every command has a timeout, and it isn't optional.** Because the app
+  can't otherwise tell a command is "done" other than watching the shell
+  for it, each command gets a timeout (configurable in SSH Settings,
+  default 240s). If a command is still running when the timeout hits, the
+  app sends Ctrl-C to interrupt it and gives up on that command — the
+  command's own actual completion is never awaited past that point. Any
+  command that legitimately needs longer than the configured timeout
+  (a full `nmap -sV -sC`, a large file transfer, a slow compile, etc.)
+  will be cut off. Raise the timeout or narrow the command if you expect it
+  to run long.
+- **No true background execution.** Because there's only one shell, you
+  can't kick off a long scan and keep chatting while it runs in the
+  background — the shell (and the AI) is blocked until that command
+  returns or the timeout fires. Backgrounding a command yourself with `&`
+  or `nohup` mostly defeats the app's own completion-detection, since it
+  relies on a marker echoed after the command exits in the foreground.
+- **Commands that wait for interactive input will hang until timeout.**
+  Anything that prompts and waits (`ssh` to another box without `-o
+  BatchMode=yes`, an interactive `apt` prompt, `mysql` with no query piped
+  in, etc.) will sit there consuming the shell until the timeout fires and
+  Ctrl-C is sent — there's no way for the app to detect "waiting for
+  input" versus "still working" ahead of time.
+- **Output is captured, not rendered as a real terminal.** The SSH panel is
+  a view-only text log, not a full terminal emulator — it strips ANSI
+  escape codes for readability rather than interpreting them, so anything
+  that depends on cursor positioning, live redraws, or colors (progress
+  bars, `top`, `htop`, a text editor like `vim`/`nano`, etc.) will not
+  display or behave correctly. Stick to commands that produce plain,
+  linear output.
+- **No command whitelist, and always root.** See below — this isn't a
+  restriction on what the AI *can* run, quite the opposite: there's nothing
+  stopping it from running anything, with full root privileges. The
+  confirmation dialog is the only gate.
+
 ## Security notes (for the project write-up)
 
 - The renderer process has **no direct Node.js access** — it only talks to
@@ -119,15 +166,9 @@ typically `%APPDATA%\cve-ai-assistant\`.
   disables local echo for password prompts).
 - SSH commands run through a single persistent interactive shell/PTY channel
   per connection; the app matches command completion with a random one-time
-  marker string rather than parsing shell prompts, and applies a per-command
-  timeout (configurable in SSH Settings, default 240s) so long-running or
-  interactive commands (that block waiting for input) don't hang forever.
-  On timeout, the app sends Ctrl-C to the remote shell to interrupt the
-  still-running foreground command — otherwise, since there's only one
-  shared shell, it would keep holding the prompt and every later command
-  (even a trivial `echo`) would queue up unread and time out too. Genuinely
-  slow commands (e.g. `nmap -sV -sC`, which commonly takes minutes) may
-  still need the timeout raised rather than relying on Ctrl-C recovery.
+  marker string rather than parsing shell prompts. See "SSH Console
+  limitations" above for what this means in practice (timeouts, no true
+  backgrounding, no interactive-input support, etc.).
 - **Prompt-injection caveat**: the `open_webpage` tool fetches arbitrary
   external HTML, and the AI also has SSH command execution. If the AI is
   asked to fetch a page and that page's content tries to instruct the AI to
