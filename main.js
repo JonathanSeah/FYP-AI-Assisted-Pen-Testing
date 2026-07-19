@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { Client: SSHClient } = require('ssh2');
+const kb = require('./kb');
 
 // ---------------------------------------------------------------------------
 // Paths / storage setup
@@ -18,12 +19,29 @@ const MAX_CONSOLE_ENTRIES = 500;
 
 if (!fs.existsSync(CHATS_DIR)) fs.mkdirSync(CHATS_DIR, { recursive: true });
 
+// Knowledge base (SQLite FTS5) — a separate local RAG store the AI can
+// search via the search_knowledge_base tool. See kb.js. If the native
+// better-sqlite3 module hasn't been rebuilt for this Electron version yet
+// (run `npm install`, which triggers that rebuild automatically), we log a
+// clear error instead of crashing the whole app — every other feature
+// (chat, SSH, browser) keeps working; only the knowledge base is unavailable.
+let kbInitError = null;
+try {
+  kb.init(USER_DATA);
+} catch (e) {
+  kbInitError = e;
+  console.error('Knowledge base failed to initialize:', e);
+}
+
 const DEFAULT_SYSTEM_PROMPT =
   'You are a helpful desktop assistant for a school cybersecurity project. ' +
-  'You have two tools available: open_webpage (to fetch a web page\'s raw HTML source, title, and status — ' +
+  'You have three tools available: open_webpage (to fetch a web page\'s raw HTML source, title, and status — ' +
   'use this when asked to inspect, open, or view the source of a specific URL), ' +
-  'and run_ssh_command (to run a shell command, as root, on a Linux machine the user has connected to over ' +
-  'SSH — the connection always logs in as root, so sudo is never required). ' +
+  'run_ssh_command (to run a shell command, as root, on a Linux machine the user has connected to over ' +
+  'SSH — the connection always logs in as root, so sudo is never required), ' +
+  'and search_knowledge_base (to search a local SQLite full-text index of reference documents the user has ' +
+  'added — completely separate from the web/SSH tools, reads-only, no network or remote-machine access at all). ' +
+  'Prefer search_knowledge_base first when a question might be answered by the user\'s own reference material. ' +
   'There is no command whitelist for run_ssh_command — you may be asked to run, or may propose, any command, ' +
   'but every single command always requires the user\'s explicit on-screen confirmation before it runs, and ' +
   'the tool will fail if no SSH connection is currently open. Because you are always root, be extra careful ' +
@@ -152,6 +170,69 @@ ipcMain.handle('config:save', (evt, cfg) => {
   const merged = Object.assign(current, cfg);
   saveConfig(merged);
   return merged;
+});
+
+// ---------------------------------------------------------------------------
+// Knowledge base (SQLite FTS5) IPC — fully independent of config/SSH/chat
+// IPC above and of the OpenRouter chat loop below. The renderer's 📚
+// Knowledge Base panel talks only to these channels; the AI reaches the
+// same store exclusively through the search_knowledge_base tool further
+// down (see TOOLS / executeToolCall).
+// ---------------------------------------------------------------------------
+function ensureKbReady() {
+  if (kbInitError) {
+    throw new Error(`Knowledge base unavailable: ${kbInitError.message}. Try running "npm install" again to rebuild better-sqlite3 for this Electron version.`);
+  }
+}
+
+ipcMain.handle('kb:list', () => {
+  ensureKbReady();
+  return kb.listDocuments();
+});
+
+ipcMain.handle('kb:add-document', (evt, { title, source, content }) => {
+  ensureKbReady();
+  const doc = kb.addDocument({ title, source, content });
+  logConsole({
+    type: 'info',
+    title: `Knowledge base: added "${doc.title}"`,
+    detail: `${doc.chunkCount} chunk(s) indexed.`
+  });
+  return doc;
+});
+
+ipcMain.handle('kb:add-file', async () => {
+  ensureKbReady();
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Import a document into the knowledge base',
+    properties: ['openFile'],
+    filters: [{ name: 'Text / Markdown / Data', extensions: ['txt', 'md', 'markdown', 'log', 'csv', 'json'] }]
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  const filePath = result.filePaths[0];
+  const content = fs.readFileSync(filePath, 'utf8');
+  const doc = kb.addDocument({ title: path.basename(filePath), source: filePath, content });
+  logConsole({
+    type: 'info',
+    title: `Knowledge base: imported "${doc.title}"`,
+    detail: `${doc.chunkCount} chunk(s) indexed from ${filePath}`
+  });
+  return doc;
+});
+
+ipcMain.handle('kb:delete-document', (evt, id) => {
+  ensureKbReady();
+  return kb.deleteDocument(id);
+});
+
+ipcMain.handle('kb:clear', () => {
+  ensureKbReady();
+  return kb.clearAll();
+});
+
+ipcMain.handle('kb:search', (evt, { query, limit }) => {
+  ensureKbReady();
+  return kb.search(query, limit);
 });
 
 // ---------------------------------------------------------------------------
@@ -507,6 +588,21 @@ const TOOLS = [
         required: ['command']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_knowledge_base',
+      description: 'Full-text search over a local SQLite FTS5 index of reference documents the user has added via the 📚 Knowledge Base panel (pasted notes, imported .txt/.md/.log/.csv/.json files, etc.). Returns the most relevant passages with their source document title/source and a highlighted snippet. This tool is read-only and completely separate from open_webpage and run_ssh_command — it never touches the network or the SSH connection, only the local knowledge-base database.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search terms or a natural-language question to look up in the knowledge base.' },
+          limit: { type: 'integer', description: 'Maximum number of passages to return (default 5, max 20).' }
+        },
+        required: ['query']
+      }
+    }
   }
 ];
 
@@ -572,6 +668,27 @@ async function executeToolCall(toolCall) {
       return `Exit code: ${result.exitCode}\nOutput:\n${result.output || '(no output)'}`;
     } catch (e) {
       return `SSH command failed: ${e.message}`;
+    }
+  }
+
+  if (name === 'search_knowledge_base') {
+    try {
+      ensureKbReady();
+      const results = kb.search(args.query, args.limit || 5);
+      logConsole({
+        type: 'info',
+        title: `AI searched knowledge base: "${args.query}"`,
+        detail: `${results.length} result(s) returned.`
+      });
+      if (results.length === 0) {
+        return 'No matching passages found in the knowledge base. It may be empty, or try different search terms.';
+      }
+      return results
+        .map((r, i) => `[${i + 1}] "${r.title}"${r.source ? ` (source: ${r.source})` : ''}\n${r.snippet}`)
+        .join('\n\n');
+    } catch (e) {
+      logConsole({ type: 'error', title: 'Knowledge base search failed', detail: e.message });
+      return `Knowledge base search failed: ${e.message}`;
     }
   }
 

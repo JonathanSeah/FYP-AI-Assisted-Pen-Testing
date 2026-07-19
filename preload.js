@@ -34,6 +34,15 @@ contextBridge.exposeInMainWorld('api', {
 
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
 
+  // Knowledge base (local SQLite FTS5 RAG store) — separate from chat/SSH/web APIs above.
+  // The AI reaches this same store only through its own search_knowledge_base tool call.
+  listKbDocuments: () => ipcRenderer.invoke('kb:list'),
+  addKbDocument: (doc) => ipcRenderer.invoke('kb:add-document', doc),
+  importKbFile: () => ipcRenderer.invoke('kb:add-file'),
+  deleteKbDocument: (id) => ipcRenderer.invoke('kb:delete-document', id),
+  clearKbDocuments: () => ipcRenderer.invoke('kb:clear'),
+  searchKb: (query, limit) => ipcRenderer.invoke('kb:search', { query, limit }),
+
   // Events from main
   onConsoleLog: (cb) => ipcRenderer.on('console:log', (evt, entry) => cb(entry)),
   onConfirmRequest: (cb) => ipcRenderer.on('command:confirm-request', (evt, req) => cb(req)),

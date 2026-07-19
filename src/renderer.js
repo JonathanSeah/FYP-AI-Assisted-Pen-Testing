@@ -612,6 +612,141 @@ browserWebviewEl.addEventListener('did-navigate-in-page', (e) => {
 });
 
 // ---------------------------------------------------------------------------
+// Knowledge base modal (local SQLite FTS5 RAG store) — independent of the
+// chat/SSH/browser code above; only talks to window.api's kb* methods.
+// ---------------------------------------------------------------------------
+function formatKbDate(iso) {
+  try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
+}
+
+// FTS5's snippet() wraps matches in the literal markers we asked for
+// ('[[' / ']]' — see kb.js). Escape the rest of the text first (it comes
+// from user-added documents) and only then turn those markers into <mark>,
+// so nothing in the stored content itself can inject HTML.
+function renderKbSnippet(snippet) {
+  return escapeHtml(snippet || '').replace(/\[\[/g, '<mark>').replace(/\]\]/g, '</mark>');
+}
+
+async function refreshKbList() {
+  const listEl = el('kbDocList');
+  listEl.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const docs = await window.api.listKbDocuments();
+    listEl.innerHTML = '';
+    if (docs.length === 0) {
+      listEl.innerHTML = '<p class="hint">No documents yet — add one above or import a file.</p>';
+      return;
+    }
+    docs.forEach(doc => {
+      const item = document.createElement('div');
+      item.className = 'kb-doc-item';
+
+      const main = document.createElement('div');
+      main.className = 'kb-doc-main';
+      const titleEl = document.createElement('div');
+      titleEl.className = 'kb-doc-title';
+      titleEl.textContent = doc.title;
+      const metaEl = document.createElement('div');
+      metaEl.className = 'kb-doc-meta';
+      const metaBits = [`${doc.chunk_count} chunk(s)`, `${doc.char_count.toLocaleString()} chars`, `added ${formatKbDate(doc.added_at)}`];
+      if (doc.source) metaBits.push(doc.source);
+      metaEl.textContent = metaBits.join(' · ');
+      main.appendChild(titleEl);
+      main.appendChild(metaEl);
+
+      const del = document.createElement('span');
+      del.className = 'del';
+      del.textContent = '✕';
+      del.title = 'Delete document';
+      del.addEventListener('click', async () => {
+        if (confirm(`Delete "${doc.title}" from the knowledge base?`)) {
+          await window.api.deleteKbDocument(doc.id);
+          refreshKbList();
+        }
+      });
+
+      item.appendChild(main);
+      item.appendChild(del);
+      listEl.appendChild(item);
+    });
+  } catch (e) {
+    listEl.innerHTML = `<p class="hint">⚠ ${escapeHtml(e.message || String(e))}</p>`;
+  }
+}
+
+async function openKbModal() {
+  el('kbModal').classList.remove('hidden');
+  el('kbTestSearchResults').innerHTML = '';
+  el('kbTestSearchInput').value = '';
+  await refreshKbList();
+}
+
+el('kbBtn').addEventListener('click', openKbModal);
+el('closeKbBtn').addEventListener('click', () => el('kbModal').classList.add('hidden'));
+
+el('kbAddBtn').addEventListener('click', async () => {
+  const title = el('kbTitleInput').value.trim();
+  const source = el('kbSourceInput').value.trim();
+  const content = el('kbContentInput').value;
+  if (!content.trim()) { alert('Content is empty — paste some text to index first.'); return; }
+  try {
+    await window.api.addKbDocument({ title: title || 'Untitled', source, content });
+    el('kbTitleInput').value = '';
+    el('kbSourceInput').value = '';
+    el('kbContentInput').value = '';
+    await refreshKbList();
+  } catch (e) {
+    alert(`Failed to add document: ${e.message || e}`);
+  }
+});
+
+el('kbImportFileBtn').addEventListener('click', async () => {
+  try {
+    const doc = await window.api.importKbFile();
+    if (doc) await refreshKbList();
+  } catch (e) {
+    alert(`Failed to import file: ${e.message || e}`);
+  }
+});
+
+el('kbClearAllBtn').addEventListener('click', async () => {
+  if (confirm('Delete ALL documents from the knowledge base? This cannot be undone.')) {
+    try {
+      await window.api.clearKbDocuments();
+      await refreshKbList();
+    } catch (e) {
+      alert(`Failed to clear knowledge base: ${e.message || e}`);
+    }
+  }
+});
+
+async function runKbTestSearch() {
+  const query = el('kbTestSearchInput').value.trim();
+  const resultsEl = el('kbTestSearchResults');
+  if (!query) { resultsEl.innerHTML = ''; return; }
+  resultsEl.innerHTML = '<p class="hint">Searching…</p>';
+  try {
+    const results = await window.api.searchKb(query, 5);
+    if (results.length === 0) {
+      resultsEl.innerHTML = '<p class="hint">No matches.</p>';
+      return;
+    }
+    resultsEl.innerHTML = results.map(r => `
+      <div class="kb-result">
+        <div class="kb-result-title">${escapeHtml(r.title)}${r.source ? ` <span class="kb-result-source">(${escapeHtml(r.source)})</span>` : ''}</div>
+        <div class="kb-result-snippet">${renderKbSnippet(r.snippet)}</div>
+      </div>
+    `).join('');
+  } catch (e) {
+    resultsEl.innerHTML = `<p class="hint">⚠ ${escapeHtml(e.message || String(e))}</p>`;
+  }
+}
+el('kbTestSearchBtn').addEventListener('click', runKbTestSearch);
+el('kbTestSearchInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); runKbTestSearch(); }
+});
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 (async function init() {

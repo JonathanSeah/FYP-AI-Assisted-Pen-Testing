@@ -449,6 +449,83 @@ body.ssh-resizing .ssh-terminal-panel {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+/* ---------- Knowledge base modal ---------- */
+.kb-add-actions { justify-content: space-between; }
+.kb-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 18px 0;
+}
+.kb-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.kb-list-header h3 { margin: 0; font-size: 14px; }
+.kb-doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.kb-doc-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+.kb-doc-main { min-width: 0; }
+.kb-doc-title {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kb-doc-meta {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kb-doc-item .del {
+  opacity: 0.5;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.kb-doc-item .del:hover { opacity: 1; color: var(--danger); }
+
+.kb-test-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.kb-result {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+.kb-result-title { color: var(--text); font-weight: 600; margin-bottom: 4px; }
+.kb-result-source { color: var(--text-dim); font-weight: 400; }
+.kb-result-snippet { color: var(--text-dim); white-space: pre-wrap; font-family: var(--mono); font-size: 12px; }
+.kb-result-snippet mark {
+  background: rgba(79,124,255,0.25);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
 /* ---------- Browser modal ---------- */
 .modal.browser-modal {
   width: 92vw;

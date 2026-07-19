@@ -33,6 +33,18 @@ confirmation prompt before the AI runs anything.
   panel up or down to resize it, or use the Collapse/Expand button. It's
   read-only — you can't type into it — and it does **not** appear in the
   System Console; SSH activity is only ever shown here.
+- **Knowledge Base (local SQLite FTS5 search / RAG)** — click "📚 Knowledge
+  Base" to paste in reference text (with a title and optional source) or
+  import a `.txt`/`.md`/`.log`/`.csv`/`.json` file. Documents are chunked
+  into overlapping passages and indexed in a local SQLite FTS5 full-text
+  index (`knowledge.db`, in the same app-data folder as `config.json`). The
+  AI's `search_knowledge_base` tool queries that index and gets back the
+  most relevant passages with a highlighted snippet — it's read-only, needs
+  no confirmation dialog (nothing it touches leaves the local database), and
+  is completely independent of `open_webpage` and `run_ssh_command`: no
+  network calls, no SSH connection involved. The modal also has a "test a
+  search" box that runs the exact same lookup so you can sanity-check what
+  the AI would see.
 - **Browser & page inspector** — click "🌐 Browser" to open a URL bar with a
   live embedded page view. "View Source" toggles to the page's raw HTML
   (fetched separately, not the rendered DOM). "Inspector / DevTools" opens
@@ -61,9 +73,13 @@ npm install
 npm start
 ```
 
-`npm install` will pull in the new `ssh2` dependency used for the SSH
-feature (the previous `package-lock.json` was removed since it didn't include
-it — `npm install` will regenerate one).
+`npm install` pulls in `ssh2` (SSH feature) and `better-sqlite3` (knowledge
+base). `better-sqlite3` is a native module and must be compiled against
+Electron's own Node ABI, not your system Node's — a `postinstall` script
+(`electron-rebuild -f -w better-sqlite3`) handles this automatically every
+time you run `npm install`, so no extra step is needed. If you ever see a
+"knowledge base unavailable" message in-app, re-run `npm install` to redo
+that rebuild (e.g. after switching Electron versions).
 
 On first launch, click **⚙ Settings**, paste your OpenRouter API key, and
 (optionally) change the model id (default: `openai/gpt-4o-mini`) and system
@@ -88,6 +104,8 @@ Electron's per-user app-data folder (`app.getPath('userData')`):
   (host/port/auth method/**password**/**sudo password** — login is always
   root, so there's no username to store).
 - `chats/*.txt` — plaintext chat transcripts.
+- `knowledge.db` — the SQLite FTS5 knowledge-base index (documents + chunks)
+  used by the "📚 Knowledge Base" panel and the `search_knowledge_base` tool.
 
 On Linux this is typically `~/.config/cve-ai-assistant/`; on Windows it's
 typically `%APPDATA%\cve-ai-assistant\`.
@@ -186,6 +204,7 @@ with real restrictions worth knowing about before you rely on it:
 cve-ai-assistant/
 ├─ package.json
 ├─ main.js        # Electron main process: IPC, SSH connection + command exec, OpenRouter calls, chat storage
+├─ kb.js           # SQLite FTS5 knowledge base (chunking, indexing, search) — used by main.js
 ├─ preload.js      # contextBridge — the only API surface exposed to the renderer
 └─ src/
    ├─ index.html

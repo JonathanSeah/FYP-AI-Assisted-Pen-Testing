@@ -6,16 +6,19 @@
   "author": "Student Project",
   "license": "MIT",
   "scripts": {
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
     "start": "electron .",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux"
   },
   "dependencies": {
+    "better-sqlite3": "12.9.0",
     "ssh2": "^1.15.0"
   },
   "devDependencies": {
-    "electron": "^43.0.0",
+    "@electron/rebuild": "^3.6.0",
+    "electron": "^38.2.0",
     "electron-builder": "^26.15.3"
   },
   "build": {
@@ -24,6 +27,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "kb.js",
       "src/**/*",
       "package.json"
     ],

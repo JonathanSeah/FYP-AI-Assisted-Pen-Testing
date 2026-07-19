@@ -27,6 +27,7 @@
             <button id="settingsBtn" class="btn ghost">⚙ Settings</button>
             <button id="sshSettingsBtn" class="btn ghost">🔐 SSH</button>
             <button id="browserBtn" class="btn ghost">🌐 Browser</button>
+            <button id="kbBtn" class="btn ghost">📚 Knowledge Base</button>
             <button id="consoleToggleBtn" class="btn ghost">🖥 System Console</button>
           </div>
         </div>
@@ -169,6 +170,52 @@ Drag the thin bar at the very top of this panel up or down to resize it.</pre>
       <div class="browser-body">
         <webview id="browserWebview" src="about:blank" class="browser-webview"></webview>
         <pre id="browserSourceView" class="browser-source-view hidden"><code id="browserSourceCode"></code></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ KNOWLEDGE BASE MODAL ============ -->
+  <div id="kbModal" class="modal-overlay hidden">
+    <div class="modal wide">
+      <h2>📚 Knowledge Base</h2>
+      <p class="hint">A local SQLite FTS5 full-text index the AI can search with its
+        <code>search_knowledge_base</code> tool — entirely separate from the SSH and web-fetch
+        tools above (read-only, no network or remote-machine access). Add reference text below,
+        or import a file; long documents are automatically split into overlapping passages so
+        search results stay focused.</p>
+
+      <div class="kb-add-form">
+        <label>Title</label>
+        <input id="kbTitleInput" type="text" placeholder="e.g. Company VPN setup notes" />
+        <label>Source (optional)</label>
+        <input id="kbSourceInput" type="text" placeholder="e.g. internal wiki page, filename, URL..." />
+        <label>Content</label>
+        <textarea id="kbContentInput" rows="6" placeholder="Paste text to index..."></textarea>
+        <div class="modal-actions kb-add-actions">
+          <button id="kbImportFileBtn" class="btn ghost">Import file…</button>
+          <button id="kbAddBtn" class="btn primary">Add to Knowledge Base</button>
+        </div>
+      </div>
+
+      <div class="kb-divider"></div>
+
+      <label>Test a search (same lookup the AI's tool uses)</label>
+      <div class="inline-input-row">
+        <input id="kbTestSearchInput" type="text" placeholder="Try a query..." />
+        <button id="kbTestSearchBtn" class="btn ghost small">Search</button>
+      </div>
+      <div id="kbTestSearchResults" class="kb-test-results"></div>
+
+      <div class="kb-divider"></div>
+
+      <div class="kb-list-header">
+        <h3>Documents</h3>
+        <button id="kbClearAllBtn" class="btn danger small">Clear all</button>
+      </div>
+      <div id="kbDocList" class="kb-doc-list"></div>
+
+      <div class="modal-actions">
+        <button id="closeKbBtn" class="btn ghost">Close</button>
       </div>
     </div>
   </div>
