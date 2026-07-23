@@ -24,10 +24,10 @@
         <div class="chat-topbar">
           <span id="currentChatTitle">No chat selected</span>
           <div class="topbar-actions">
-            <button id="settingsBtn" class="btn ghost">⚙ Settings</button>
-            <button id="sshSettingsBtn" class="btn ghost">🔐 SSH</button>
-            <button id="browserBtn" class="btn ghost">🌐 Browser</button>
-            <button id="kbBtn" class="btn ghost">📚 Knowledge Base</button>
+            <button id="settingsBtn" class="btn ghost">Settings</button>
+            <button id="sshSettingsBtn" class="btn ghost">SSH</button>
+            <button id="browserBtn" class="btn ghost">Browser</button>
+            <button id="kbBtn" class="btn ghost">Knowledge Base</button>
             <button id="consoleToggleBtn" class="btn ghost">🖥 System Console</button>
           </div>
         </div>
@@ -86,7 +86,7 @@ Drag the thin bar at the very top of this panel up or down to resize it.</pre>
       <label>System Prompt</label>
       <textarea id="systemPromptInput" rows="8"></textarea>
 
-      <p class="hint">SSH connection details and sudo password live under 🔐 SSH, not here.</p>
+      <p class="hint">SSH connection details and sudo password live under SSH, not here.</p>
 
       <div class="modal-actions">
         <button id="closeSettingsBtn" class="btn ghost">Cancel</button>
@@ -98,7 +98,7 @@ Drag the thin bar at the very top of this panel up or down to resize it.</pre>
   <!-- ============ SSH SETTINGS MODAL ============ -->
   <div id="sshModal" class="modal-overlay hidden">
     <div class="modal">
-      <h2>🔐 SSH Settings</h2>
+      <h2>SSH Settings</h2>
       <p class="hint">Connect the AI to a Linux machine over SSH. There is no command whitelist — the AI can
         request ANY command, but it must always ask for your confirmation first in an on-screen dialog.</p>
 
@@ -177,7 +177,7 @@ Drag the thin bar at the very top of this panel up or down to resize it.</pre>
   <!-- ============ KNOWLEDGE BASE MODAL ============ -->
   <div id="kbModal" class="modal-overlay hidden">
     <div class="modal wide">
-      <h2>📚 Knowledge Base</h2>
+      <h2>Knowledge Base</h2>
       <p class="hint">A local SQLite FTS5 full-text index the AI can search with its
         <code>search_knowledge_base</code> tool — entirely separate from the SSH and web-fetch
         tools above (read-only, no network or remote-machine access). Add reference text below,
