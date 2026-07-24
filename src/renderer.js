@@ -761,6 +761,6 @@ el('kbTestSearchInput').addEventListener('keydown', (e) => {
   const sshStatus = await window.api.sshStatus();
   setSshTopStatus(sshStatus);
   if (!sshStatus.connected) {
-    appendSystemNote('No SSH connection yet — open 🔐 SSH to connect to a Linux machine.');
+    appendSystemNote('No SSH connection yet — open SSH to connect to a Linux machine.');
   }
 })();
