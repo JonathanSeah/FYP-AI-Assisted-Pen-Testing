@@ -1,4 +1,4 @@
-# CVE AI Assistant (school project)
+# AI Assisted Pen Testing
 
 A cross-platform (Windows + Linux) Electron desktop chatbot that talks to an
 AI model through **OpenRouter**, can inspect web pages (fetch raw HTML source
@@ -12,7 +12,7 @@ confirmation prompt before the AI runs anything.
 
 - **OpenRouter integration** — bring your own API key, pick any OpenRouter model id.
 - **Editable system prompt** — change the AI's instructions any time in Settings.
-- **SSH shell + AI command execution, root only** — click **🔐 SSH** to enter
+- **SSH shell + AI command execution, root only** — click **SSH** to enter
   connection details: a server address (always logged in as `root@<address>`
   — this is the *only* supported login mode, there is no username field),
   port, and password *or* private key + passphrase, plus an optional
@@ -33,7 +33,7 @@ confirmation prompt before the AI runs anything.
   panel up or down to resize it, or use the Collapse/Expand button. It's
   read-only — you can't type into it — and it does **not** appear in the
   System Console; SSH activity is only ever shown here.
-- **Knowledge Base (local SQLite FTS5 search / RAG)** — click "📚 Knowledge
+- **Knowledge Base (local SQLite FTS5 search / RAG)** — click "Knowledge
   Base" to paste in reference text (with a title and optional source) or
   import a `.txt`/`.md`/`.log`/`.csv`/`.json` file. Documents are chunked
   into overlapping passages and indexed in a local SQLite FTS5 full-text
@@ -45,7 +45,7 @@ confirmation prompt before the AI runs anything.
   network calls, no SSH connection involved. The modal also has a "test a
   search" box that runs the exact same lookup so you can sanity-check what
   the AI would see.
-- **Browser & page inspector** — click "🌐 Browser" to open a URL bar with a
+- **Browser & page inspector** — click "Browser" to open a URL bar with a
   live embedded page view. "View Source" toggles to the page's raw HTML
   (fetched separately, not the rendered DOM). "Inspector / DevTools" opens
   Chrome DevTools attached to the embedded page. The AI also has an
@@ -81,9 +81,9 @@ time you run `npm install`, so no extra step is needed. If you ever see a
 "knowledge base unavailable" message in-app, re-run `npm install` to redo
 that rebuild (e.g. after switching Electron versions).
 
-On first launch, click **⚙ Settings**, paste your OpenRouter API key, and
+On first launch, click **Settings**, paste your OpenRouter API key, and
 (optionally) change the model id (default: `openai/gpt-4o-mini`) and system
-prompt. Click **🔐 SSH** to enter your SSH connection details and connect.
+prompt. Click **SSH** to enter your SSH connection details and connect.
 
 ## Building installers
 
@@ -91,10 +91,6 @@ prompt. Click **🔐 SSH** to enter your SSH connection details and connect.
 npm run build:win     # produces an NSIS installer for Windows
 npm run build:linux   # produces an AppImage for Linux
 ```
-
-(You can cross-build for Windows from Linux and vice versa with
-`electron-builder`, but building natively on the target OS is more reliable
-for a school demo.)
 
 ## Where things are stored
 
@@ -105,7 +101,7 @@ Electron's per-user app-data folder (`app.getPath('userData')`):
   root, so there's no username to store).
 - `chats/*.txt` — plaintext chat transcripts.
 - `knowledge.db` — the SQLite FTS5 knowledge-base index (documents + chunks)
-  used by the "📚 Knowledge Base" panel and the `search_knowledge_base` tool.
+  used by the "Knowledge Base" panel and the `search_knowledge_base` tool.
 
 On Linux this is typically `~/.config/cve-ai-assistant/`; on Windows it's
 typically `%APPDATA%\cve-ai-assistant\`.
@@ -156,47 +152,6 @@ with real restrictions worth knowing about before you rely on it:
   restriction on what the AI *can* run, quite the opposite: there's nothing
   stopping it from running anything, with full root privileges. The
   confirmation dialog is the only gate.
-
-## Security notes (for the project write-up)
-
-- The renderer process has **no direct Node.js access** — it only talks to
-  the main process through a narrow `contextBridge` API in `preload.js`
-  (context isolation + no node integration).
-- **Every SSH session logs in as root, with no other option.** There's no
-  lower-privilege account to fall back on, so any command the AI is allowed
-  to run already has full control of the machine — the confirmation dialog
-  is the entire safety boundary. Worth calling out explicitly in a write-up
-  as a deliberate (and riskier) design choice versus a non-root account.
-- **There is no command whitelist for SSH.** The AI can request literally any
-  shell command on the connected machine. The only safety gate is the
-  mandatory, non-optional on-screen confirmation dialog shown before each
-  command runs — there's no setting to turn this off (unlike the old
-  whitelist toggle). Treat this like giving a (careful, but occasionally
-  wrong) intern shell access to that box.
-- **Credentials are stored in plaintext** in `config.json`, including the SSH
-  password and the sudo password if you set one — the same way the OpenRouter
-  API key already was. This is a known limitation worth calling out in a
-  write-up; a production version should use the OS keychain (e.g. via
-  `keytar`/`safeStorage`) instead.
-- The sudo password is only ever auto-typed in response to a literal
-  `[sudo] password for <user>:` prompt from the remote shell — it is not sent
-  anywhere else, and it isn't shown in the SSH Terminal (the remote shell
-  disables local echo for password prompts).
-- SSH commands run through a single persistent interactive shell/PTY channel
-  per connection; the app matches command completion with a random one-time
-  marker string rather than parsing shell prompts. See "SSH Console
-  limitations" above for what this means in practice (timeouts, no true
-  backgrounding, no interactive-input support, etc.).
-- **Prompt-injection caveat**: the `open_webpage` tool fetches arbitrary
-  external HTML, and the AI also has SSH command execution. If the AI is
-  asked to fetch a page and that page's content tries to instruct the AI to
-  run something, the confirmation dialog is your last line of defense —
-  always read the exact command shown before clicking Allow, especially if a
-  command follows shortly after a web fetch in the chat.
-- The `open_webpage` tool and the in-app browser's "View Source" both block
-  requests to localhost and private/link-local IP ranges (basic SSRF guard).
-  This only checks IP-literal/loopback patterns, not DNS-resolved private
-  addresses — worth noting as a limitation if asked.
 
 ## Project structure
 
