@@ -629,7 +629,10 @@ async function callOpenRouter(apiKey, model, messages) {
   return res.json();
 }
 
-async function executeToolCall(toolCall) {
+// `sshLog`, when provided, collects a record of every run_ssh_command the AI
+// requested during this turn — approved, denied, or failed — so the renderer
+// can attach it to the assistant's chat message as a collapsible block.
+async function executeToolCall(toolCall, sshLog) {
   const name = toolCall.function.name;
   let args = {};
   try { args = JSON.parse(toolCall.function.arguments || '{}'); } catch (e) { /* ignore */ }
@@ -661,12 +664,36 @@ async function executeToolCall(toolCall) {
       host: sshInfo ? `${sshInfo.username}@${sshInfo.host}:${sshInfo.port}` : 'remote host'
     });
     if (!approved) {
+      if (sshLog) {
+        sshLog.push({
+          command: args.command,
+          status: 'denied',
+          exitCode: null,
+          output: 'Denied by user — command was not run.'
+        });
+      }
       return `The user denied permission to run "${args.command}" over SSH.`;
     }
     try {
       const result = await runSshCommand(args.command);
+      if (sshLog) {
+        sshLog.push({
+          command: args.command,
+          status: 'ok',
+          exitCode: result.exitCode,
+          output: result.output || ''
+        });
+      }
       return `Exit code: ${result.exitCode}\nOutput:\n${result.output || '(no output)'}`;
     } catch (e) {
+      if (sshLog) {
+        sshLog.push({
+          command: args.command,
+          status: 'error',
+          exitCode: null,
+          output: e.message
+        });
+      }
       return `SSH command failed: ${e.message}`;
     }
   }
@@ -709,6 +736,7 @@ ipcMain.handle('chat:send', async (evt, { history, userMessage }) => {
 
   let finalText = null;
   const newMessages = [{ role: 'user', content: userMessage }];
+  const sshLog = []; // every SSH command this turn, in the order it was requested
   let iterations = 0;
 
   while (iterations < 12 && finalText === null) {
@@ -726,7 +754,7 @@ ipcMain.handle('chat:send', async (evt, { history, userMessage }) => {
       messages.push(msg);
       newMessages.push({ role: 'assistant', content: msg.content || '', tool_calls: msg.tool_calls });
       for (const tc of msg.tool_calls) {
-        const result = await executeToolCall(tc);
+        const result = await executeToolCall(tc, sshLog);
         const toolMsg = { role: 'tool', tool_call_id: tc.id, name: tc.function.name, content: result };
         messages.push(toolMsg);
         newMessages.push(toolMsg);
@@ -742,7 +770,7 @@ ipcMain.handle('chat:send', async (evt, { history, userMessage }) => {
     finalText = '(The assistant used tools repeatedly without producing a final answer. Try rephrasing.)';
   }
 
-  return { finalText, newMessages };
+  return { finalText, newMessages, sshLog };
 });
 
 // ---------------------------------------------------------------------------
@@ -777,11 +805,27 @@ ipcMain.handle('chats:load', (evt, fname) => {
 });
 
 ipcMain.handle('chats:append', (evt, { fname, entries }) => {
-  // entries: array of {role, content, time}
+  // entries: array of {role, content, time}, plus {role:'ssh', ...} records
   const full = path.join(CHATS_DIR, fname);
   let block = '';
   for (const e of entries) {
     if (e.role === 'tool') continue; // tool calls are not duplicated verbatim into the transcript
+
+    // SSH executions get their own block type so they survive a reload and
+    // can be re-attached to the assistant message they belong to. Written
+    // immediately *before* that assistant block, in execution order.
+    //   [SSH - <iso>]
+    //   $ <command>
+    //   --- ok exit 0 ---      (or "--- denied ---" / "--- error ---")
+    //   <output>
+    if (e.role === 'ssh') {
+      const statusLine = e.status === 'ok'
+        ? `--- ok exit ${e.exitCode} ---`
+        : `--- ${e.status} ---`;
+      block += `[SSH - ${new Date().toISOString()}]\n$ ${e.command}\n${statusLine}\n${e.output || ''}\n\n`;
+      continue;
+    }
+
     const roleLabel = e.role.toUpperCase();
     block += `[${roleLabel} - ${new Date().toISOString()}]\n${e.content}\n\n`;
   }

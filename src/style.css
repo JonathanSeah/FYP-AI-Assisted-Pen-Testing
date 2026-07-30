@@ -236,6 +236,104 @@ html, body {
 }
 .msg pre code { display: block; padding-top: 14px; }
 
+/* --- SSH command log attached to an assistant message ------------------- */
+.ssh-log {
+  margin: 2px 0 12px;
+  white-space: normal;
+}
+.ssh-log-heading {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  margin-bottom: 5px;
+}
+.ssh-cmd {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--success);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  margin-bottom: 5px;
+  overflow: hidden;
+}
+.ssh-cmd.status-denied { border-left-color: var(--warn); }
+.ssh-cmd.status-error  { border-left-color: var(--danger); }
+
+.ssh-cmd > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.ssh-cmd > summary::-webkit-details-marker { display: none; }
+.ssh-cmd > summary::before {
+  content: "▸";
+  color: var(--text-dim);
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+.ssh-cmd[open] > summary::before { content: "▾"; }
+.ssh-cmd > summary:hover { background: var(--bg-elevated); }
+
+.ssh-cmd-badge {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--success);
+}
+.status-denied .ssh-cmd-badge { color: var(--warn); }
+.status-error  .ssh-cmd-badge { color: var(--danger); }
+
+.ssh-cmd-text {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.ssh-cmd-body {
+  position: relative;
+  border-top: 1px solid var(--border);
+  padding: 8px 10px;
+}
+.ssh-cmd-body pre {
+  margin: 0;
+  max-height: 340px;
+  overflow: auto;
+  background: #0a0c11;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.ssh-cmd-body pre code {
+  padding-top: 0;
+  white-space: pre;
+}
+.ssh-copy-btn {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  font-size: 11px;
+  padding: 3px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ssh-copy-btn:hover { color: var(--text); border-color: var(--accent); }
+
 .composer {
   display: flex;
   gap: 10px;

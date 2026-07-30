@@ -45,10 +45,81 @@ function renderMarkdownish(text) {
   }).join('');
 }
 
-function appendMessageBubble(role, content) {
+// ---------------------------------------------------------------------------
+// SSH command log attached to an assistant message — one collapsed <details>
+// per command. Native <details>/<summary> gives us hide/open for free, so
+// there's no toggle state to manage. Collapsed by default to keep long scan
+// output from burying the actual answer.
+// ---------------------------------------------------------------------------
+function buildSshLogSection(entries) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ssh-log';
+
+  const heading = document.createElement('div');
+  heading.className = 'ssh-log-heading';
+  heading.textContent = entries.length === 1
+    ? '1 SSH command run'
+    : `${entries.length} SSH commands run`;
+  wrap.appendChild(heading);
+
+  entries.forEach((entry) => {
+    const details = document.createElement('details');
+    details.className = `ssh-cmd status-${entry.status || 'ok'}`;
+
+    const summary = document.createElement('summary');
+
+    const badge = document.createElement('span');
+    badge.className = 'ssh-cmd-badge';
+    badge.textContent = entry.status === 'denied' ? 'denied'
+      : entry.status === 'error' ? 'error'
+      : `exit ${entry.exitCode}`;
+
+    const cmd = document.createElement('code');
+    cmd.className = 'ssh-cmd-text';
+    cmd.textContent = entry.command;
+
+    summary.appendChild(badge);
+    summary.appendChild(cmd);
+    details.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.className = 'ssh-cmd-body';
+
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    // textContent, not innerHTML — remote output is untrusted and must never
+    // be parsed as markup.
+    code.textContent = entry.output && entry.output.trim()
+      ? entry.output
+      : '(no output)';
+    pre.appendChild(code);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'ssh-copy-btn';
+    copyBtn.textContent = 'Copy output';
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(entry.output || '');
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => (copyBtn.textContent = 'Copy output'), 1200);
+    });
+
+    body.appendChild(pre);
+    body.appendChild(copyBtn);
+    details.appendChild(body);
+    wrap.appendChild(details);
+  });
+
+  return wrap;
+}
+
+function appendMessageBubble(role, content, sshEntries) {
   const div = document.createElement('div');
   div.className = `msg ${role}`;
   div.innerHTML = renderMarkdownish(content);
+  // Commands ran before the model wrote its answer, so the log goes on top.
+  if (Array.isArray(sshEntries) && sshEntries.length > 0) {
+    div.insertBefore(buildSshLogSection(sshEntries), div.firstChild);
+  }
   el('messages').appendChild(div);
   div.querySelectorAll('.code-copy-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -115,6 +186,20 @@ function humanizeChatFile(fname) {
   return fname.replace(/^[0-9T:\-Z.]+_/, '').replace(/\.txt$/, '').replace(/_/g, ' ');
 }
 
+// Inverse of the [SSH] block writer in main.js's chats:append handler.
+// Returns null (and the block is skipped) if the status line is missing,
+// so a hand-edited or truncated transcript degrades gracefully.
+function parseSshBlock(body) {
+  const m = body.match(/^--- (ok|denied|error)(?: exit (-?\d+))? ---$/m);
+  if (!m) return null;
+  return {
+    command: body.slice(0, m.index).trim().replace(/^\$ /, ''),
+    status: m[1],
+    exitCode: m[2] != null ? parseInt(m[2], 10) : null,
+    output: body.slice(m.index + m[0].length).replace(/^\n/, '')
+  };
+}
+
 async function loadChat(fname) {
   currentChatFile = fname;
   currentHistory = [];
@@ -122,13 +207,22 @@ async function loadChat(fname) {
   el('messages').innerHTML = '';
   el('currentChatTitle').textContent = humanizeChatFile(fname);
 
-  const blockRe = /\[(USER|ASSISTANT) - ([^\]]+)\]\n([\s\S]*?)(?=\n\[(?:USER|ASSISTANT)|\s*$)/g;
+  const blockRe = /\[(USER|ASSISTANT|SSH) - ([^\]]+)\]\n([\s\S]*?)(?=\n\[(?:USER|ASSISTANT|SSH)|\s*$)/g;
   let m;
+  let pendingSsh = []; // SSH blocks seen since the last message block
   while ((m = blockRe.exec(text)) !== null) {
     const role = m[1].toLowerCase();
     const content = m[3].trim();
+
+    if (role === 'ssh') {
+      const parsed = parseSshBlock(content);
+      if (parsed) pendingSsh.push(parsed);
+      continue;
+    }
+
     if (!content) continue;
-    appendMessageBubble(role, content);
+    appendMessageBubble(role, content, role === 'assistant' ? pendingSsh : undefined);
+    if (role === 'assistant') pendingSsh = [];
     currentHistory.push({ role, content });
   }
   refreshChatList();
@@ -182,15 +276,18 @@ async function sendMessage() {
   const thinkingDiv = appendMessageBubble('assistant', 'Thinking...');
 
   try {
-    const { finalText, newMessages } = await window.api.sendMessage(currentHistory, text);
+    const { finalText, newMessages, sshLog } = await window.api.sendMessage(currentHistory, text);
     thinkingDiv.remove();
-    appendMessageBubble('assistant', finalText);
+    appendMessageBubble('assistant', finalText, sshLog);
 
     currentHistory.push({ role: 'user', content: text });
     currentHistory.push({ role: 'assistant', content: finalText });
 
+    // SSH records are written before the assistant block so that loadChat()
+    // can buffer them and re-attach them to the message that follows.
     await window.api.appendChat(currentChatFile, [
       { role: 'user', content: text },
+      ...(sshLog || []).map(e => ({ role: 'ssh', ...e })),
       { role: 'assistant', content: finalText }
     ]);
     refreshChatList();
