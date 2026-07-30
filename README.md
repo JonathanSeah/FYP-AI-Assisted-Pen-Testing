@@ -10,6 +10,13 @@ confirmation prompt before the AI runs anything.
 
 ## Features
 
+- **Adjustable UI size** — the whole interface (text *and* chrome: padding,
+  panels, the SSH terminal, code blocks) scales together from 70% to 200%.
+  Use the `− 100% +` control in the toolbar, the **UI Size** slider in
+  Settings, `Ctrl+=` / `Ctrl+-` / `Ctrl+0`, **View → Enlarge UI**, or hold
+  `Ctrl` and scroll. The setting is saved to `config.json` (`uiZoom`) and
+  restored on next launch. At larger sizes the sidebars narrow and then the
+  chat list hides itself so the conversation keeps its room.
 - **OpenRouter integration** — bring your own API key, pick any OpenRouter model id.
 - **Editable system prompt** — change the AI's instructions any time in Settings.
 - **SSH shell + AI command execution, root only** — click **SSH** to enter
@@ -96,7 +103,7 @@ npm run build:linux   # produces an AppImage for Linux
 
 Electron's per-user app-data folder (`app.getPath('userData')`):
 
-- `config.json` — API key, model, system prompt, and SSH connection details
+- `config.json` — API key, model, system prompt, UI zoom (`uiZoom`), and SSH connection details
   (host/port/auth method/**password**/**sudo password** — login is always
   root, so there's no username to store).
 - `chats/*.txt` — plaintext chat transcripts.

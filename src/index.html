@@ -24,6 +24,11 @@
         <div class="chat-topbar">
           <span id="currentChatTitle">No chat selected</span>
           <div class="topbar-actions">
+            <div class="zoom-control" title="Enlarge or shrink the whole UI (Ctrl+= / Ctrl+- / Ctrl+0)">
+              <button id="zoomOutBtn" class="btn ghost zoom-btn" aria-label="Shrink UI">−</button>
+              <button id="zoomResetBtn" class="btn ghost zoom-level" aria-label="Reset UI size">100%</button>
+              <button id="zoomInBtn" class="btn ghost zoom-btn" aria-label="Enlarge UI">+</button>
+            </div>
             <button id="settingsBtn" class="btn ghost">Settings</button>
             <button id="sshSettingsBtn" class="btn ghost">SSH</button>
             <button id="browserBtn" class="btn ghost">Browser</button>
@@ -85,6 +90,15 @@ Drag the thin bar at the very top of this panel up or down to resize it.</pre>
 
       <label>System Prompt</label>
       <textarea id="systemPromptInput" rows="8"></textarea>
+
+      <label>UI Size</label>
+      <div class="inline-input-row">
+        <input id="zoomSliderInput" type="range" min="0" max="9" step="1" value="3" />
+        <span id="zoomSliderValue" class="zoom-slider-value">100%</span>
+      </div>
+      <p class="hint">Scales all text and interface elements. Also adjustable any time from the
+        toolbar, with Ctrl+= / Ctrl+- / Ctrl+0, or by holding Ctrl and scrolling. Applies
+        immediately and is saved even if you press Cancel.</p>
 
       <p class="hint">SSH connection details and sudo password live under SSH, not here.</p>
 

@@ -34,6 +34,11 @@ contextBridge.exposeInMainWorld('api', {
 
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
 
+  // UI zoom (text + chrome scale together)
+  getZoom: () => ipcRenderer.invoke('zoom:get'),
+  setZoom: (zoom) => ipcRenderer.invoke('zoom:set', zoom),
+  stepZoom: (delta) => ipcRenderer.invoke('zoom:step', delta),
+
   // Knowledge base (local SQLite FTS5 RAG store) — separate from chat/SSH/web APIs above.
   // The AI reaches this same store only through its own search_knowledge_base tool call.
   listKbDocuments: () => ipcRenderer.invoke('kb:list'),
@@ -48,5 +53,6 @@ contextBridge.exposeInMainWorld('api', {
   onConfirmRequest: (cb) => ipcRenderer.on('command:confirm-request', (evt, req) => cb(req)),
   sendConfirmResponse: (requestId, approved) => ipcRenderer.send('command:confirm-response', { requestId, approved }),
   onSshData: (cb) => ipcRenderer.on('ssh:data', (evt, text) => cb(text)),
-  onSshStatus: (cb) => ipcRenderer.on('ssh:status', (evt, status) => cb(status))
+  onSshStatus: (cb) => ipcRenderer.on('ssh:status', (evt, status) => cb(status)),
+  onZoomChanged: (cb) => ipcRenderer.on('zoom:changed', (evt, zoom) => cb(zoom))
 });

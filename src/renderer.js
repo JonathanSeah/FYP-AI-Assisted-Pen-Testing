@@ -297,6 +297,55 @@ async function sendMessage() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// UI zoom — text and chrome scale together. All the actual work happens in
+// main.js (Electron's zoom factor); this just drives it and reflects state.
+// ---------------------------------------------------------------------------
+let zoomSteps = [0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.4, 1.6, 1.8, 2.0];
+
+function nearestZoomIndex(zoom) {
+  let nearest = 0;
+  for (let i = 1; i < zoomSteps.length; i++) {
+    if (Math.abs(zoomSteps[i] - zoom) < Math.abs(zoomSteps[nearest] - zoom)) nearest = i;
+  }
+  return nearest;
+}
+
+// Reflect the current zoom in both indicators. Called on startup and from the
+// zoom:changed event, so the toolbar and the Settings slider stay in sync no
+// matter which one (or which keyboard shortcut) triggered the change.
+function renderZoomIndicators(zoom) {
+  const pct = `${Math.round(zoom * 100)}%`;
+  const levelBtn = el('zoomLevel') || el('zoomResetBtn');
+  if (levelBtn) levelBtn.textContent = pct;
+  const slider = el('zoomSliderInput');
+  if (slider) slider.value = String(nearestZoomIndex(zoom));
+  const sliderVal = el('zoomSliderValue');
+  if (sliderVal) sliderVal.textContent = pct;
+}
+
+el('zoomInBtn').addEventListener('click', () => window.api.stepZoom(+1));
+el('zoomOutBtn').addEventListener('click', () => window.api.stepZoom(-1));
+el('zoomResetBtn').addEventListener('click', () => window.api.setZoom(1));
+
+el('zoomSliderInput').addEventListener('input', (e) => {
+  const idx = parseInt(e.target.value, 10);
+  const zoom = zoomSteps[idx] != null ? zoomSteps[idx] : 1;
+  el('zoomSliderValue').textContent = `${Math.round(zoom * 100)}%`;
+  window.api.setZoom(zoom);
+});
+
+// Ctrl + wheel. Electron's own pinch-zoom would otherwise change the factor
+// behind main.js's back, leaving the saved value and the real zoom out of
+// step — so intercept it and route through the same ladder.
+window.addEventListener('wheel', (e) => {
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  window.api.stepZoom(e.deltaY < 0 ? +1 : -1);
+}, { passive: false });
+
+window.api.onZoomChanged((zoom) => renderZoomIndicators(zoom));
+
 el('sendBtn').addEventListener('click', sendMessage);
 el('userInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -315,6 +364,7 @@ async function openSettings() {
   el('apiKeyInput').value = cfg.apiKey || '';
   el('modelInput').value = cfg.model || '';
   el('systemPromptInput').value = cfg.systemPrompt || '';
+  renderZoomIndicators(cfg.uiZoom != null ? cfg.uiZoom : 1);
   el('settingsModal').classList.remove('hidden');
 }
 el('settingsBtn').addEventListener('click', openSettings);
@@ -848,6 +898,12 @@ el('kbTestSearchInput').addEventListener('keydown', (e) => {
 // ---------------------------------------------------------------------------
 (async function init() {
   await refreshChatList();
+
+  const zoomInfo = await window.api.getZoom();
+  if (Array.isArray(zoomInfo.steps) && zoomInfo.steps.length) zoomSteps = zoomInfo.steps;
+  el('zoomSliderInput').max = String(zoomSteps.length - 1);
+  renderZoomIndicators(zoomInfo.zoom);
+
   const cfg = await window.api.getConfig();
   if (!cfg.apiKey) {
     appendSystemNote('No OpenRouter API key set yet — open Settings (⚙) to add one.');

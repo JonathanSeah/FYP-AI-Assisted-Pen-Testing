@@ -1,7 +1,7 @@
 // main.js — Electron main process
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -63,6 +63,9 @@ function defaultConfig() {
     sshPrivateKeyPath: '',
     sshPassphrase: '',
     sudoPassword: '',
+    // UI zoom factor (1 = 100%). Scales all text *and* chrome — see
+    // ZOOM_STEPS / applyZoom below. Persisted so it survives a restart.
+    uiZoom: 1,
     // How long to wait for a single SSH command before giving up on it.
     // 45s is fine for quick commands but far too short for things like
     // `nmap -sV -sC` (version detection + default scripts routinely takes
@@ -105,9 +108,18 @@ function createWindow() {
     }
   });
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
+
+  // Zoom must be (re)applied after each load — Electron resets the factor on
+  // navigation, and a reload would otherwise silently snap the UI back to 100%.
+  mainWindow.webContents.on('did-finish-load', () => {
+    applyZoom(loadConfig().uiZoom, { persist: false });
+  });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  buildMenu();
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   sshDisconnect();
@@ -119,6 +131,116 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   sshDisconnect();
 });
+
+// ---------------------------------------------------------------------------
+// UI zoom — enlarges text and chrome together
+// ---------------------------------------------------------------------------
+// Electron's zoom factor scales the whole rendered page: font sizes, padding,
+// borders, the SSH terminal, everything. That's why this is a zoom factor and
+// not a root font-size override — style.css uses hardcoded px throughout, so
+// scaling only the text would leave padding and panel widths behind.
+//
+// A discrete ladder rather than free-form steps, so repeated presses land on
+// predictable, readable values instead of drifting to 1.0700000000000003.
+const ZOOM_STEPS = [0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.4, 1.6, 1.8, 2.0];
+const ZOOM_MIN = ZOOM_STEPS[0];
+const ZOOM_MAX = ZOOM_STEPS[ZOOM_STEPS.length - 1];
+
+function clampZoom(z) {
+  const n = Number(z);
+  if (!isFinite(n)) return 1;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, n));
+}
+
+// Apply to the window and tell the renderer so it can update the indicator.
+function applyZoom(zoom, { persist = true } = {}) {
+  const z = clampZoom(zoom);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.setZoomFactor(z);
+    mainWindow.webContents.send('zoom:changed', z);
+  }
+  if (persist) {
+    const cfg = loadConfig();
+    cfg.uiZoom = z;
+    saveConfig(cfg);
+  }
+  return z;
+}
+
+// Move `delta` rungs along the ladder from wherever we currently are. Uses the
+// nearest rung as the starting point, so a zoom set from the Settings slider
+// (or an older config with an off-ladder value) still steps sensibly.
+function stepZoom(delta) {
+  const current = clampZoom(loadConfig().uiZoom);
+  let nearest = 0;
+  for (let i = 1; i < ZOOM_STEPS.length; i++) {
+    if (Math.abs(ZOOM_STEPS[i] - current) < Math.abs(ZOOM_STEPS[nearest] - current)) nearest = i;
+  }
+  const next = Math.min(ZOOM_STEPS.length - 1, Math.max(0, nearest + delta));
+  return applyZoom(ZOOM_STEPS[next]);
+}
+
+ipcMain.handle('zoom:get', () => ({
+  zoom: clampZoom(loadConfig().uiZoom),
+  min: ZOOM_MIN,
+  max: ZOOM_MAX,
+  steps: ZOOM_STEPS
+}));
+ipcMain.handle('zoom:set', (evt, zoom) => applyZoom(zoom));
+ipcMain.handle('zoom:step', (evt, delta) => stepZoom(delta));
+
+// An explicit menu, replacing Electron's default. The default one already
+// shipped View > Zoom In/Out accelerators that changed zoom *without*
+// persisting it, which would fight this module — owning the menu removes that
+// ambiguity and makes the shortcuts discoverable.
+function buildMenu() {
+  const template = [
+    {
+      label: 'File',
+      submenu: [{ role: process.platform === 'darwin' ? 'close' : 'quit' }]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Enlarge UI',
+          accelerator: 'CommandOrControl+Plus',
+          click: () => stepZoom(+1)
+        },
+        {
+          // Ctrl+= is what you actually get when pressing the "+" key
+          // without Shift; registering both means either works.
+          label: 'Enlarge UI',
+          accelerator: 'CommandOrControl+=',
+          visible: false,
+          click: () => stepZoom(+1)
+        },
+        {
+          label: 'Shrink UI',
+          accelerator: 'CommandOrControl+-',
+          click: () => stepZoom(-1)
+        },
+        {
+          label: 'Reset UI Size',
+          accelerator: 'CommandOrControl+0',
+          click: () => applyZoom(1)
+        },
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'toggleDevTools' }
+      ]
+    }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 function logConsole(entry) {
   // entry: { type: 'command'|'info'|'error'|'web_fetch', title, detail, time }

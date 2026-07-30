@@ -28,9 +28,33 @@ html, body {
 
 .app {
   display: grid;
-  grid-template-columns: 260px 1fr 320px;
+  /* minmax(0, ...) rather than fixed widths: zooming shrinks the effective CSS
+     viewport, and with hard 260px/320px sidebars a 200% zoom would leave the
+     chat column only a sliver wide. These let the sidebars give ground, and
+     the media queries below step them down further. */
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr) minmax(0, 320px);
   height: 100vh;
   min-height: 0;
+}
+
+/* Effective width shrinks as zoom grows, so these breakpoints double as the
+   zoom-adaptation path. The collapsed-console offset has to match the column
+   width at each step or the panel over/under-shoots when hidden. */
+@media (max-width: 1180px) {
+  .app { grid-template-columns: minmax(0, 215px) minmax(0, 1fr) minmax(0, 270px); }
+  .console-sidebar.collapsed { margin-right: -270px; }
+}
+@media (max-width: 940px) {
+  .app { grid-template-columns: minmax(0, 175px) minmax(0, 1fr) minmax(0, 225px); }
+  .console-sidebar.collapsed { margin-right: -225px; }
+}
+@media (max-width: 760px) {
+  /* Past this point the left sidebar costs more than it gives — drop it and
+     let chat have the room. Chats stay reachable via the chats folder button
+     once the window (or zoom) allows the sidebar back. */
+  .app { grid-template-columns: 0 minmax(0, 1fr) minmax(0, 200px); }
+  .chats-sidebar { display: none; }
+  .console-sidebar.collapsed { margin-right: -200px; }
 }
 
 /* ---------- Center column: chat + SSH terminal stacked ---------- */
@@ -131,7 +155,58 @@ html, body {
   border-bottom: 1px solid var(--border);
 }
 #currentChatTitle { font-weight: 600; color: var(--text-dim); }
-.topbar-actions { display: flex; gap: 8px; }
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;      /* at high zoom the toolbar needs a second row */
+  justify-content: flex-end;
+}
+
+/* ---------- UI zoom control ---------- */
+.zoom-control {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.zoom-control .btn {
+  border: none;
+  border-radius: 0;
+  margin: 0;
+}
+.zoom-control .btn + .btn { border-left: 1px solid var(--border); }
+.zoom-btn {
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 9px;
+  min-width: 28px;
+}
+.zoom-level {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 4px 7px;
+  min-width: 46px;
+  text-align: center;
+  color: var(--text-dim);
+}
+.zoom-level:hover { color: var(--text); }
+
+.zoom-slider-value {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  min-width: 46px;
+  text-align: right;
+  align-self: center;
+}
+.inline-input-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+  padding: 0;
+}
 
 .messages {
   flex: 1;
